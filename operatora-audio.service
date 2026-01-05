@@ -1,0 +1,18 @@
+[Unit]
+Description=Operatora Audio Server
+After=network.target
+
+[Service]
+Type=simple
+User=operatora_audio
+WorkingDirectory=/home/operatora_audio/operatora_audio
+Environment="NODE_ENV=production"
+Environment="PORT=3000"
+ExecStart=/usr/bin/node /home/operatora_audio/operatora_audio/server.js
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

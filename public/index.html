@@ -3,38 +3,102 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Audio Dashboard - Operatora Audio</title>
+    <title>[SYSTEM] AUDIO DASHBOARD</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+    <div class="scanlines"></div>
+    <div class="noise"></div>
+    
     <div class="container">
         <header>
-            <h1>🎵 Audio Dashboard</h1>
-            <p>Manage and monitor your audio files</p>
+            <div class="terminal-prompt">
+                <span class="prompt-user">root@audio-server</span>
+                <span class="prompt-symbol">:~$</span>
+                <span class="typing-text" id="headerText"></span>
+                <span class="cursor-blink">_</span>
+            </div>
+            <div class="glitch" data-text="[SYSTEM] AUDIO DASHBOARD">[SYSTEM] AUDIO DASHBOARD</div>
+            <p class="subtitle">&gt; Monitoring audio file uploads...</p>
         </header>
 
         <div class="stats-section">
             <div class="stat-card">
+                <div class="stat-label">&gt; TOTAL_USERS</div>
+                <div class="stat-value" id="totalUsers">0</div>
+                <div class="stat-bar">
+                    <div class="stat-bar-fill" id="totalUsersBar"></div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">&gt; TOTAL_FILES</div>
                 <div class="stat-value" id="totalFiles">0</div>
-                <div class="stat-label">Total Files</div>
+                <div class="stat-bar">
+                    <div class="stat-bar-fill" id="totalFilesBar"></div>
+                </div>
             </div>
             <div class="stat-card">
-                <div class="stat-value" id="totalSize">0 MB</div>
-                <div class="stat-label">Total Size</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value" id="avgSize">0 MB</div>
-                <div class="stat-label">Avg File Size</div>
+                <div class="stat-label">&gt; TODAY_FILES</div>
+                <div class="stat-value" id="todayFiles">0</div>
+                <div class="stat-bar">
+                    <div class="stat-bar-fill" id="todayFilesBar"></div>
+                </div>
             </div>
         </div>
 
-        <div class="audio-list-section">
+        <div class="users-section">
             <div class="section-header">
-                <h2>Audio Files</h2>
-                <button id="refreshBtn" class="btn btn-secondary">Refresh</button>
+                <h2>
+                    <span class="terminal-prefix">[</span>
+                    <span class="terminal-prefix-green">USERS</span>
+                    <span class="terminal-prefix">]</span>
+                    <span class="terminal-prefix"> STATISTICS</span>
+                </h2>
+                <button id="refreshBtn" class="btn btn-hacker">
+                    <span>&gt;</span> REFRESH
+                </button>
             </div>
-            <div id="audioList" class="audio-list">
-                <div class="loading">Loading audio files...</div>
+            <div id="usersList" class="users-list">
+                <div class="loading">
+                    <span class="loading-dots">Loading users</span>
+                    <span class="loading-animation">...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- User Audio Modal -->
+    <div id="userAudioModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>
+                    <span class="terminal-prefix">[</span>
+                    <span class="terminal-prefix-green" id="modalUserName">USER</span>
+                    <span class="terminal-prefix">]</span>
+                    <span class="terminal-prefix"> AUDIO FILES</span>
+                </h2>
+                <button id="closeModalBtn" class="btn btn-hacker">
+                    <span>&gt;</span> CLOSE
+                </button>
+            </div>
+            <div class="modal-filters">
+                <input type="text" id="filterInput" class="filter-input" placeholder="&gt; Filter by filename...">
+                <select id="formatFilter" class="filter-select">
+                    <option value="">&gt; All Formats</option>
+                    <option value=".mp3">MP3</option>
+                    <option value=".wav">WAV</option>
+                    <option value=".ogg">OGG</option>
+                    <option value=".m4a">M4A</option>
+                    <option value=".aac">AAC</option>
+                    <option value=".flac">FLAC</option>
+                    <option value=".webm">WEBM</option>
+                </select>
+            </div>
+            <div id="userAudioList" class="user-audio-list">
+                <div class="loading">
+                    <span class="loading-dots">Loading audio files</span>
+                    <span class="loading-animation">...</span>
+                </div>
             </div>
         </div>
     </div>

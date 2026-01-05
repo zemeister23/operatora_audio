@@ -4,6 +4,7 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
+const db = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -24,10 +25,26 @@ if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
 
-// Storage configuration for multer
+// Helper function to sanitize folder name
+function sanitizeFolderName(name) {
+  // Remove special characters and replace spaces with underscores
+  return name
+    .replace(/[^a-zA-Z0-9а-яА-ЯёЁ\s-]/g, '')
+    .replace(/\s+/g, '_')
+    .trim();
+}
+
+// Temporary storage - files will be moved to proper folder after upload
+const tempDir = path.join(uploadsDir, '.temp');
+if (!fs.existsSync(tempDir)) {
+  fs.mkdirSync(tempDir, { recursive: true });
+}
+
+// Storage configuration for multer - save files temporarily first
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, uploadsDir);
+    // Save to temp folder first, will move to proper folder after we get name/surname
+    cb(null, tempDir);
   },
   filename: (req, file, cb) => {
     const uniqueName = `${uuidv4()}-${Date.now()}${path.extname(file.originalname)}`;
@@ -53,61 +70,79 @@ const upload = multer({
   }
 });
 
-// Helper function to get audio metadata file path
-const getMetadataPath = () => path.join(dataDir, 'audio-metadata.json');
-
-// Helper function to read metadata
-const readMetadata = () => {
-  const metadataPath = getMetadataPath();
-  if (fs.existsSync(metadataPath)) {
-    try {
-      const data = fs.readFileSync(metadataPath, 'utf8');
-      return JSON.parse(data);
-    } catch (error) {
-      return [];
-    }
-  }
-  return [];
-};
-
-// Helper function to write metadata
-const writeMetadata = (metadata) => {
-  const metadataPath = getMetadataPath();
-  fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
-};
+// Initialize database on startup
+db.getDatabase().catch(err => {
+  console.error('Failed to initialize database:', err);
+  process.exit(1);
+});
 
 // API Routes
 
 // Upload audio file
-app.post('/api/upload', upload.single('audio'), (req, res) => {
+app.post('/api/upload', upload.single('audio'), async (req, res) => {
+  let tempFilePath = null;
+  
   try {
+    console.log('Upload request received');
+    console.log('File:', req.file);
+    console.log('Body:', req.body);
+    
     if (!req.file) {
+      console.error('No file in request');
       return res.status(400).json({ error: 'No audio file provided' });
     }
 
-    // Get name and surname from form data
-    const name = req.body.name || '';
-    const surname = req.body.surname || '';
+    tempFilePath = req.file.path; // Temporary file path
+
+    // Get name and surname from form data (now available after multer processes)
+    const name = (req.body.name || '').trim();
+    const surname = (req.body.surname || '').trim();
+
+    // Create folder name from name and surname
+    let folderName = 'Unknown';
+    if (name || surname) {
+      const parts = [];
+      if (name) parts.push(sanitizeFolderName(name));
+      if (surname) parts.push(sanitizeFolderName(surname));
+      folderName = parts.join('_') || 'Unknown';
+    }
+    
+    // Create user folder
+    const userFolder = path.join(uploadsDir, folderName);
+    if (!fs.existsSync(userFolder)) {
+      fs.mkdirSync(userFolder, { recursive: true });
+      console.log(`Created folder for user: ${folderName}`);
+    }
+    
+    // Move file from temp to proper folder
+    const finalFileName = req.file.filename;
+    const finalFilePath = path.join(userFolder, finalFileName);
+    
+    fs.renameSync(tempFilePath, finalFilePath);
+    console.log(`Moved file from ${tempFilePath} to ${finalFilePath}`);
 
     const audioData = {
       id: uuidv4(),
       originalName: req.file.originalname,
-      filename: req.file.filename,
-      path: req.file.path,
+      filename: finalFileName,
+      path: finalFilePath,
       size: req.file.size,
       mimetype: req.file.mimetype,
       uploadedAt: new Date().toISOString(),
       duration: null, // Could be calculated with audio processing library
       format: path.extname(req.file.originalname).toLowerCase(),
       owner: {
-        name: name.trim(),
-        surname: surname.trim()
+        name: name,
+        surname: surname
       }
     };
 
-    const metadata = readMetadata();
-    metadata.push(audioData);
-    writeMetadata(metadata);
+    console.log('Created audio data:', audioData);
+    console.log(`File saved to folder: ${folderName}`);
+
+    // Save to database
+    await db.insertAudio(audioData);
+    console.log('Audio saved to database successfully');
 
     res.json({
       success: true,
@@ -116,15 +151,28 @@ app.post('/api/upload', upload.single('audio'), (req, res) => {
     });
   } catch (error) {
     console.error('Upload error:', error);
+    console.error('Error stack:', error.stack);
+    
+    // If file was uploaded but something failed, try to delete the file
+    if (tempFilePath && fs.existsSync(tempFilePath)) {
+      try {
+        fs.unlinkSync(tempFilePath);
+        console.log('Deleted temporary file due to error');
+      } catch (deleteError) {
+        console.error('Error deleting temporary file:', deleteError);
+      }
+    }
+    
     res.status(500).json({ error: error.message || 'Failed to upload audio file' });
   }
 });
 
 // Get all audio files
-app.get('/api/audio', (req, res) => {
+app.get('/api/audio', async (req, res) => {
   try {
-    const metadata = readMetadata();
-    res.json(metadata);
+    const audioFiles = await db.getAllAudio();
+    console.log(`API /audio requested, returning ${audioFiles.length} file(s)`);
+    res.json(audioFiles);
   } catch (error) {
     console.error('Error fetching audio files:', error);
     res.status(500).json({ error: 'Failed to fetch audio files' });
@@ -132,10 +180,9 @@ app.get('/api/audio', (req, res) => {
 });
 
 // Get single audio file by ID
-app.get('/api/audio/:id', (req, res) => {
+app.get('/api/audio/:id', async (req, res) => {
   try {
-    const metadata = readMetadata();
-    const audio = metadata.find(a => a.id === req.params.id);
+    const audio = await db.getAudioById(req.params.id);
     
     if (!audio) {
       return res.status(404).json({ error: 'Audio file not found' });
@@ -149,25 +196,36 @@ app.get('/api/audio/:id', (req, res) => {
 });
 
 // Delete audio file
-app.delete('/api/audio/:id', (req, res) => {
+app.delete('/api/audio/:id', async (req, res) => {
   try {
-    const metadata = readMetadata();
-    const audioIndex = metadata.findIndex(a => a.id === req.params.id);
+    // Get audio info from database
+    const audio = await db.getAudioById(req.params.id);
     
-    if (audioIndex === -1) {
+    if (!audio) {
       return res.status(404).json({ error: 'Audio file not found' });
     }
     
-    const audio = metadata[audioIndex];
+    // Delete from database
+    await db.deleteAudio(req.params.id);
     
     // Delete the file from filesystem
     if (fs.existsSync(audio.path)) {
       fs.unlinkSync(audio.path);
+      console.log(`Deleted file: ${audio.path}`);
+      
+      // Try to remove empty folder if it exists
+      const folderPath = path.dirname(audio.path);
+      try {
+        const filesInFolder = fs.readdirSync(folderPath);
+        if (filesInFolder.length === 0) {
+          fs.rmdirSync(folderPath);
+          console.log(`Removed empty folder: ${folderPath}`);
+        }
+      } catch (folderError) {
+        // Ignore folder deletion errors
+        console.log('Could not remove folder (may not be empty):', folderError.message);
+      }
     }
-    
-    // Remove from metadata
-    metadata.splice(audioIndex, 1);
-    writeMetadata(metadata);
     
     res.json({ success: true, message: 'Audio file deleted successfully' });
   } catch (error) {
@@ -177,10 +235,9 @@ app.delete('/api/audio/:id', (req, res) => {
 });
 
 // Serve audio files
-app.get('/api/audio/:id/stream', (req, res) => {
+app.get('/api/audio/:id/stream', async (req, res) => {
   try {
-    const metadata = readMetadata();
-    const audio = metadata.find(a => a.id === req.params.id);
+    const audio = await db.getAudioById(req.params.id);
     
     if (!audio) {
       return res.status(404).json({ error: 'Audio file not found' });
@@ -195,6 +252,44 @@ app.get('/api/audio/:id/stream', (req, res) => {
     console.error('Error streaming audio file:', error);
     res.status(500).json({ error: 'Failed to stream audio file' });
   }
+});
+
+// Get user statistics
+app.get('/api/users/stats', async (req, res) => {
+  try {
+    const stats = await db.getUserStatistics();
+    console.log(`API /users/stats requested, returning ${stats.length} user(s)`);
+    res.json(stats);
+  } catch (error) {
+    console.error('Error fetching user statistics:', error);
+    res.status(500).json({ error: 'Failed to fetch user statistics' });
+  }
+});
+
+// Get audio files by user
+app.get('/api/users/:name/:surname/audio', async (req, res) => {
+  try {
+    const { name, surname } = req.params;
+    const audioFiles = await db.getAudioByUser(name, surname);
+    console.log(`API /users/${name}/${surname}/audio requested, returning ${audioFiles.length} file(s)`);
+    res.json(audioFiles);
+  } catch (error) {
+    console.error('Error fetching user audio files:', error);
+    res.status(500).json({ error: 'Failed to fetch user audio files' });
+  }
+});
+
+// Graceful shutdown
+process.on('SIGINT', async () => {
+  console.log('\nShutting down gracefully...');
+  await db.closeDatabase();
+  process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+  console.log('\nShutting down gracefully...');
+  await db.closeDatabase();
+  process.exit(0);
 });
 
 // Start server

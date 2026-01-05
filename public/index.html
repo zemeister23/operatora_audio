@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Dashboard - Operatora Audio</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎵 Audio Dashboard</h1>
+            <p>Manage and monitor your audio files</p>
+        </header>
+
+        <div class="stats-section">
+            <div class="stat-card">
+                <div class="stat-value" id="totalFiles">0</div>
+                <div class="stat-label">Total Files</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="totalSize">0 MB</div>
+                <div class="stat-label">Total Size</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="avgSize">0 MB</div>
+                <div class="stat-label">Avg File Size</div>
+            </div>
+        </div>
+
+        <div class="audio-list-section">
+            <div class="section-header">
+                <h2>Audio Files</h2>
+                <button id="refreshBtn" class="btn btn-secondary">Refresh</button>
+            </div>
+            <div id="audioList" class="audio-list">
+                <div class="loading">Loading audio files...</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
